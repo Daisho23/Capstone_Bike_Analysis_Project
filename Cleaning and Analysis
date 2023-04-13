@@ -1,0 +1,177 @@
+------------------------Combining Data-----------------------------------------------------------------------------------------------------------------------------------------------
+------------------------(queries were done in Big Query, saved, and exported here)--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------Here I gather data from each month of ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------the year and combine them into one table----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select *
+from `capstone.22-01`
+union all
+select *
+from `capstone.22-02`
+union all
+select *
+from `capstone.22-03`
+union all
+select *
+from`capstone.22-04`
+union  all 
+select *
+from `capstone.22-05`
+union all
+select *
+from `capstone.22-06`
+union all
+select * 
+from `capstone.22-07`
+union all
+select *
+from `capstone.22-08`
+union all
+select *
+from `capstone.22-09`
+union all
+select *
+from `capstone.22-10`
+union all 
+select *
+from `capstone.22-11`
+union all 
+select *
+from `capstone.22-12`
+union all
+select *
+from `capstone.23-01`
+ 
+ 
+ 
+ 
+------------------------------Cleaning the data---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------removing null values that are found within end/start longitude and latitude columns----------------------------------------------------------------------------------------------------------------------------------
+SELECT ride_id,  
+FROM `micro-root-367821.capstone.combined_data`  
+where 
+start_lat is null 
+or start_lng is null 
+or end_lat is null  
+or end_lng is null
+                                        
+                                        
+------------------------------Selecting and deleting all rows where casual rides are missing start/end station names------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------and start/end station id---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+SELECT ride_id, start_station_name  
+FROM `micro-root-367821.capstone.combined_data`  
+where rideable_type='classic_bike'
+and start_station_name is null or end_station_name is null or 
+start_station_id is null or end_station_id is null 
+------------------------------Removed all instance in which the word "REPAIR" is found in either start or end station name------------------------------------------------------------------------------------------------------------------------
+
+select  start_station_name, end_station_name,ride_id
+from `clean_date_step1.combined_data`
+where 
+start_station_name like '%REPAIR%' or 
+end_station_name like '%REPAIR%'  
+-----------------------------Renamed all instances in which 'docked_bike', and 'null values' are present in columns---------------------------------------------------------------------------------------------------------------------------------------
+
+SELECT *,
+REPLACE(rideable_type, 'docked_bike', 'classic_bike') AS ride_type,
+IFNULL(TRIM(REPLACE(start_station_name, '(Temp)', '')), 'On Bike Lock') AS starting_station_name,
+IFNULL(TRIM(REPLACE(end_station_name, '(Temp)', '')), 'On Bike Lock') AS ending_station_name
+from `clean_date_step1.combined_data`                                             
+------------------------------Creating Date and Time Columns for deeper analysis-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+select *,
+extract (year from started_at) as Year, 
+TIMESTAMP_DIFF(ended_at, started_at, MINUTE) AS ride_time_minutes,
+case 
+when extract (Month from started_at) = 1 then 'January' 
+when extract (Month from started_at) = 2 then 'February' 
+when extract (Month from started_at) = 3 then 'March'
+when extract (month from started_at) = 4 then 'April'
+when extract (month from started_at) = 5 then 'May'
+when extract (month from started_at) = 6 then 'June'
+when extract (month from started_at) = 7 then 'July'
+when extract (month from started_at) = 8 then 'August'
+when extract (month from started_at) = 9 then 'September'
+when extract (month from started_at) = 10 then 'October'
+when extract (month from started_at) = 11 then 'November'
+when extract (month from started_at) = 12 then 'December'end as Month,
+case 
+WHEN EXTRACT(DAYOFWEEK FROM started_at) = 1 THEN 'Sun'
+WHEN EXTRACT(DAYOFWEEK FROM started_at) = 2 THEN 'Mon'
+WHEN EXTRACT(DAYOFWEEK FROM started_at) = 3 THEN 'Tues'
+WHEN EXTRACT(DAYOFWEEK FROM started_at) = 4 THEN 'Wed'
+WHEN EXTRACT(DAYOFWEEK FROM started_at) = 5 THEN 'Thur'
+WHEN EXTRACT(DAYOFWEEK FROM started_at) = 6 THEN 'Fri'
+when EXTRACT(DAYOFWEEK FROM started_at) = 7 THEN 'Saturday'end as Day_of_Week,
+extract (date from started_at) as Date,
+extract(time from started_at) as Time_of_Day
+from `clean_date_step1.combined_data`
+order by Year, Month, Day_of_Week
+
+-------------------------------Analysis------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------Begining analysis of Average time between users--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\
+-------------------------------Created table from results------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------Analysis of average time for members-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+SELECT Day_of_Week,Month,Year, FORMAT_TIMESTAMP(
+    '%T', 
+    TIMESTAMP_SECONDS(CAST(AVG(TIME_DIFF(trip_length, '00:00:00', SECOND)) AS INT64))
+  ) AS avg_trip_length,
+from `clean_date_step1.combined_data`
+where member_casual='member'
+group by Day_of_Week,Month,Year
+-------------------------------Analysis of average time for casuals------------------------------------------------------------------------------------------------------------------------------------------------------
+
+SELECT Day_of_Week,Month,Year, FORMAT_TIMESTAMP(
+    '%T', 
+    TIMESTAMP_SECONDS(CAST(AVG(TIME_DIFF(trip_length, '00:00:00', SECOND)) AS INT64))
+  ) AS avg_trip_length,
+from `clean_date_step1.combined_data`
+where member_casual='casual'
+group by Day_of_Week,Month,Year
+
+------------------------------Analysis between members and casual riders during day and month
+------------------------------Saved as a table--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select 
+count (member_casual)total_count,
+count (case when member_casual='member' then '1'end) as member,
+count (case when member_casual='casual' then '2' end) as casual,Day_of_Week, Month, Date,Year
+from `clean_date_step1.combined_data`
+group by Day_of_Week, member_casual,Month,Date,Year
+
+------------------------------Analysis between members and casual and the top 1000 most popular ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------Ending stations------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------Saved as a table----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select  
+end_station, 
+count(member_casual)total, 
+count(case when member_casual='member' then 1 end)as member,
+count(case when member_casual='casual'then 1 end) as casual,
+end_lat,end_lng
+from `clean_date_step1.combined_data`
+where end_station<>'Bike_locked'
+group by end_station,end_lat,end_lng
+order by total desc
+limit 1000
+------------------------------Analysis between members and casual and the top 1000 most popular ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------Starting stations------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------Scaved as a table------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select  
+start_station, 
+count(member_casual)total, 
+count(case when member_casual='member' then 1 end)as member,
+count(case when member_casual='casual'then 1 end) as casual,
+start_lat,start_lng
+from `clean_date_step1.combined_data`
+where start_station<>'Bike_unlocked'
+group by start_station,start_lat,start_lng
+order by total desc
+limit 1000
+-------------------------------End of Analysis------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------Each table was used for visualization--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------Thank you for viewing------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
